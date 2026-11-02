@@ -1,5 +1,5 @@
 import { deriveKey, decryptBundle } from './crypto.js';
-import { FIELDS, buildQueue, fieldStats, recordAnswer } from './stats.js';
+import { FIELDS, buildQueue, fieldStats, isOldYear, recordAnswer, yearLabel } from './stats.js';
 import { resolvePage } from './route.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
@@ -27,7 +27,6 @@ const state = {
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const yearLabel = (y) => `令和${Number(y.slice(1))}年度`;
 
 function loadRecords() {
   try {
@@ -236,6 +235,12 @@ async function startQuiz(setup) {
       state.key = null;
       state.bundles = {};
       state.current = 'lock';
+      try {
+        await loadMeta(); // 新しいデータの鍵づくりの設定に入れ替える
+      } catch (err) {
+        renderError(err);
+        return;
+      }
       renderLock('データが更新されました。パスワードをもう一度入れてください。');
       return;
     }
@@ -250,6 +255,7 @@ function renderQuiz() {
       <button class="secondary" id="quit">終わる</button>
     </div>
     ${storageNotice()}
+    ${isOldYear(q.year) ? '<p class="notice">古い年度の問題です。法改正や技術の変化で、今の正解と違う場合があります。</p>' : ''}
     <div class="paper" id="paper"><img alt="${esc(yearLabel(q.year))} No.${q.no} の問題" src="data:image/webp;base64,${q.image}"></div>
     <p class="sub">画像をタップすると拡大します</p>
     <div class="choices">${[1, 2, 3, 4].map((n) => `<button class="choice" data-choice="${n}">${n}</button>`).join('')}</div>
@@ -363,12 +369,16 @@ async function restoreKey() {
   }
 }
 
+async function loadMeta() {
+  const res = await fetch('data/meta.json', { cache: 'no-cache' });
+  if (!res.ok) throw new LoadError('data/meta.json', res.status);
+  state.meta = await res.json();
+}
+
 async function main() {
   loadRecords();
   try {
-    const res = await fetch('data/meta.json', { cache: 'no-cache' });
-    if (!res.ok) throw new LoadError('data/meta.json', res.status);
-    state.meta = await res.json();
+    await loadMeta();
     await restoreKey();
     render();
   } catch (e) {

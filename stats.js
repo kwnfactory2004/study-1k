@@ -1,5 +1,14 @@
 export const FIELDS = ['エンジン', 'シャシ', '故障診断', '環境・安全', '法規'];
 export const CUTOFF = 0.4;
+const ERAS = { H: '平成', R: '令和' };
+const NEWEST_OLD_YEAR = 'R02'; // これより前は法改正などで今の答えと違うことがある
+
+export function yearLabel(year) {
+  const n = Number(year.slice(1));
+  return `${ERAS[year[0]]}${n === 1 ? '元' : n}年度`;
+}
+
+export const isOldYear = (year) => year.localeCompare(NEWEST_OLD_YEAR) <= 0;
 
 export function fieldOf(no) {
   if (no <= 15) return 'エンジン';
