@@ -22,6 +22,12 @@ export function questionId(question) {
   return `${question.year}-${String(question.no).padStart(2, '0')}`;
 }
 
+export function setupError({ fields, years }) {
+  if (fields.length === 0) return '分野を選んでください';
+  if (years.length === 0) return '年度を選んでください';
+  return '';
+}
+
 // 解説に「要確認」の印をつけた問題の一覧
 export function toggleFlag(flags, id) {
   return flags.includes(id) ? flags.filter((f) => f !== id) : [...flags, id].sort();

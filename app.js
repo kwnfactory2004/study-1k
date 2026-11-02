@@ -1,5 +1,5 @@
 import { deriveKey, decryptBundle } from './crypto.js';
-import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, toggleFlag, yearLabel } from './stats.js';
+import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, yearLabel } from './stats.js';
 import { resolvePage } from './route.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
@@ -194,7 +194,7 @@ function renderHome() {
 }
 
 function openSetup(fields) {
-  state.setup = { fields, years: [...state.meta.years], order: 'year', wrongOnly: false };
+  state.setup = { fields, years: [], order: 'year', wrongOnly: false };
   location.hash = '#setup';
   render();
 }
@@ -208,7 +208,8 @@ function renderSetup(message = '') {
   app.innerHTML = `<form class="card" id="setup">
     <h1>出題の設定</h1>
     <fieldset><legend>分野</legend><div class="chips">${chips('fields', 'checkbox', FIELDS, (f) => s.fields.includes(f))}</div></fieldset>
-    <fieldset><legend>年度</legend><div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabel)}</div></fieldset>
+    <fieldset><legend>年度</legend><div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabel)}</div>
+      <button class="secondary" type="button" id="allYears">すべて選ぶ</button></fieldset>
     <fieldset><legend>順番</legend><div class="chips">${chips('order', 'radio', ['year', 'random'], (o) => s.order === o, (o) => (o === 'year' ? '年度順' : 'ランダム'))}</div></fieldset>
     <fieldset><legend>絞り込み</legend><div class="chips">${chips('wrongOnly', 'checkbox', ['yes'], () => s.wrongOnly, () => '間違えた問題だけ')}</div></fieldset>
     <p class="error" id="msg" role="alert">${esc(message)}</p>
@@ -218,15 +219,34 @@ function renderSetup(message = '') {
     </div>
   </form>`;
   document.getElementById('back').onclick = () => { location.hash = '#home'; render(); };
+  const yearBoxes = [...app.querySelectorAll('input[name="years"]')];
+  const allYears = document.getElementById('allYears');
+  const updateAllYears = () => {
+    allYears.textContent = yearBoxes.every((b) => b.checked) ? 'すべて外す' : 'すべて選ぶ';
+  };
+  allYears.onclick = () => {
+    const on = !yearBoxes.every((b) => b.checked);
+    yearBoxes.forEach((b) => { b.checked = on; });
+    updateAllYears();
+  };
+  yearBoxes.forEach((b) => { b.onchange = updateAllYears; });
+  updateAllYears();
   document.getElementById('setup').onsubmit = (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
-    startQuiz({
+    const setup = {
       fields: form.getAll('fields'),
       years: form.getAll('years'),
       order: form.get('order'),
       wrongOnly: form.has('wrongOnly'),
-    });
+    };
+    const error = setupError(setup);
+    if (error) {
+      state.setup = setup;
+      renderSetup(error);
+      return;
+    }
+    startQuiz(setup);
   };
 }
 
