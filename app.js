@@ -1,9 +1,10 @@
 import { deriveKey, decryptBundle } from './crypto.js';
-import { FIELDS, buildQueue, fieldStats, isOldYear, recordAnswer, yearLabel } from './stats.js';
+import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, toggleFlag, yearLabel } from './stats.js';
 import { resolvePage } from './route.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
 const RECORDS_KEY = 'study1k.v1';
+const FLAGS_KEY = 'study1k.flags.v1';
 const DB_NAME = 'study1k';
 const DB_STORE = 'keys';
 const TAP_GUARD_MS = 400; // 問題が切り替わった直後のタップは受け付けない
@@ -13,6 +14,7 @@ const state = {
   meta: null,
   key: null,
   records: {},
+  flags: [],
   storageOk: true,
   bundles: {},
   setup: null,
@@ -32,8 +34,11 @@ function loadRecords() {
   try {
     state.records = JSON.parse(localStorage.getItem(RECORDS_KEY)) ?? {};
     localStorage.setItem(RECORDS_KEY, JSON.stringify(state.records));
+    const flags = JSON.parse(localStorage.getItem(FLAGS_KEY));
+    state.flags = Array.isArray(flags) ? flags : [];
   } catch {
     state.records = {};
+    state.flags = [];
     state.storageOk = false;
   }
 }
@@ -44,6 +49,25 @@ function saveRecords() {
   } catch {
     state.storageOk = false;
   }
+}
+
+function saveFlags() {
+  try {
+    localStorage.setItem(FLAGS_KEY, JSON.stringify(state.flags));
+  } catch {
+    state.storageOk = false;
+  }
+}
+
+function explanationHtml(q) {
+  if (!q.explanation) return '<p class="sub">この問題の解説はまだありません。</p>';
+  const flagged = state.flags.includes(questionId(q));
+  return `<div class="card explain">
+      <p class="label">解説（AI作成・公式ではありません）</p>
+      ${q.explanation.sure ? '' : '<p class="notice">この解説は自信が低めです。教科書で確かめてください。</p>'}
+      <p class="explain-text">${esc(q.explanation.text)}</p>
+      <button class="secondary" id="flag" aria-pressed="${flagged}">${flagged ? '要確認の印を外す' : '解説がおかしい？ 要確認の印をつける'}</button>
+    </div>`;
 }
 
 function openDb() {
@@ -158,7 +182,11 @@ function renderHome() {
     <div class="bento">
       ${FIELDS.map((f) => statTile(f, stats[f])).join('')}
       <button class="card tile" id="all"><div class="label">全部の分野</div><div class="state">分野や年度を選んで解く</div></button>
-    </div>`;
+    </div>
+    ${state.flags.length ? `<div class="card">
+      <h2>要確認の印をつけた解説</h2>
+      <ul class="wrong-list">${state.flags.map((id) => `<li>${esc(yearLabel(id.slice(0, 3)))} No.${Number(id.slice(4))}</li>`).join('')}</ul>
+    </div>` : ''}`;
   app.querySelectorAll('[data-field]').forEach((el) => {
     el.onclick = () => openSetup([el.dataset.field]);
   });
@@ -287,7 +315,18 @@ function answer(choice) {
     : correct ? '正解' : `不正解（正解は ${q.answer}）`;
   const last = state.index + 1 >= state.queue.length;
   document.getElementById('after').innerHTML = `<p class="feedback ${correct ? '' : 'ng'}" role="status">${esc(text)}</p>
+    ${explanationHtml(q)}
     <button class="primary full" id="next">${last ? '結果を見る' : '次へ'}</button>`;
+  const flag = document.getElementById('flag');
+  if (flag) {
+    flag.onclick = () => {
+      state.flags = toggleFlag(state.flags, questionId(q));
+      saveFlags();
+      const on = state.flags.includes(questionId(q));
+      flag.setAttribute('aria-pressed', String(on));
+      flag.textContent = on ? '要確認の印を外す' : '解説がおかしい？ 要確認の印をつける';
+    };
+  }
   document.getElementById('next').onclick = () => {
     if (last) { showResult(); return; }
     state.index += 1;

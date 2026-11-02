@@ -71,6 +71,9 @@ legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
 .choice.wrong { outline: 2px solid var(--danger); color: var(--danger); }
 .feedback { font-weight: 600; margin-bottom: 16px; }
 .feedback.ng { color: var(--danger); }
+.explain { margin-bottom: 16px; padding: 16px; }
+.explain .label { font-size: var(--fs-small); color: var(--text-sub); margin-bottom: 8px; }
+.explain-text { white-space: pre-line; }
 .wrong-list { list-style: none; padding: 0; margin: 0 0 16px; }
 .wrong-list li { padding: 8px 0; }
 @media (max-width: 900px) {

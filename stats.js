@@ -22,6 +22,11 @@ export function questionId(question) {
   return `${question.year}-${String(question.no).padStart(2, '0')}`;
 }
 
+// 解説に「要確認」の印をつけた問題の一覧
+export function toggleFlag(flags, id) {
+  return flags.includes(id) ? flags.filter((f) => f !== id) : [...flags, id].sort();
+}
+
 function shuffled(list, rng) {
   const out = [...list];
   for (let i = out.length - 1; i > 0; i--) {
