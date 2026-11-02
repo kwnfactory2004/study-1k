@@ -42,7 +42,7 @@ button.tile:hover { transform: translateY(-2px); }
 .tile .unit { font-size: var(--fs-body); color: var(--text-sub); font-weight: 400; }
 .tile.warn .value, .tile.warn .state { color: var(--danger); }
 .state { font-size: var(--fs-small); color: var(--text-sub); }
-button { font: inherit; }
+button { font: inherit; touch-action: manipulation; }
 .primary, .secondary { min-height: 44px; border-radius: var(--radius-md); padding: 8px 24px; border: 0; cursor: pointer; transition: background 0.2s ease; }
 .primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .primary:hover { background: var(--accent-hover); }

@@ -1,10 +1,12 @@
 import { deriveKey, decryptBundle } from './crypto.js';
 import { FIELDS, buildQueue, fieldStats, recordAnswer } from './stats.js';
 import { resolvePage } from './route.js';
+import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
 const RECORDS_KEY = 'study1k.v1';
 const DB_NAME = 'study1k';
 const DB_STORE = 'keys';
+const TAP_GUARD_MS = 400; // 問題が切り替わった直後のタップは受け付けない
 const app = document.getElementById('app');
 
 const state = {
@@ -21,6 +23,7 @@ const state = {
   inQuiz: false,
   current: null,
   loading: false,
+  readyAt: 0,
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -68,7 +71,7 @@ const forgetKey = () => keyStore('readwrite', (s) => s.delete('main'));
 
 async function fetchBytes(path) {
   const res = await fetch(path, { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  if (!res.ok) throw new LoadError(path, res.status);
   return new Uint8Array(await res.arrayBuffer());
 }
 
@@ -90,10 +93,10 @@ async function loadYears(years) {
   }
 }
 
-function renderError(message) {
+function renderError(error) {
   app.innerHTML = `<div class="card narrow">
     <h1>読み込めませんでした</h1>
-    <p>${esc(message)}</p>
+    <p>${esc(errorMessage(error))}</p>
     <button class="primary full" id="reload">再読み込み</button>
   </div>`;
   document.getElementById('reload').onclick = () => location.reload();
@@ -103,13 +106,13 @@ function storageNotice() {
   return state.storageOk ? '' : '<p class="notice">このブラウザには記録を保存できません。問題は解けますが、成績は残りません。</p>';
 }
 
-function renderLock() {
+function renderLock(message = '') {
   app.innerHTML = `<form class="card narrow" id="lock">
     <h1>Study 1K</h1>
     <p class="sub">パスワードを入れてください</p>
     <input type="password" id="pw" autocomplete="current-password" aria-label="パスワード" required>
     <label class="check"><input type="checkbox" id="remember" checked> この機器で覚える</label>
-    <p class="error" id="msg" role="alert"></p>
+    <p class="error" id="msg" role="alert">${esc(message)}</p>
     <button class="primary full" id="go">開く</button>
   </form>`;
   document.getElementById('lock').onsubmit = async (event) => {
@@ -131,7 +134,7 @@ function renderLock() {
       location.hash = '#home';
       render();
     } catch (e) {
-      renderError(e.message);
+      renderError(e);
     }
   };
 }
@@ -209,6 +212,10 @@ async function startQuiz(setup) {
   start.textContent = '読み込み中…';
   try {
     await loadYears(setup.years);
+    if (state.current !== 'setup') {
+      state.loading = false; // 読み込み中に別の画面へ移った
+      return;
+    }
     const all = setup.years.flatMap((y) => state.bundles[y]);
     state.queue = buildQueue(all, setup, state.records, Math.random);
     state.loading = false;
@@ -224,7 +231,15 @@ async function startQuiz(setup) {
     render();
   } catch (e) {
     state.loading = false;
-    renderError(e.message);
+    if (isStaleKey(e)) {
+      await forgetKey().catch(() => {});
+      state.key = null;
+      state.bundles = {};
+      state.current = 'lock';
+      renderLock('データが更新されました。パスワードをもう一度入れてください。');
+      return;
+    }
+    renderError(e);
   }
 }
 
@@ -239,6 +254,7 @@ function renderQuiz() {
     <p class="sub">画像をタップすると拡大します</p>
     <div class="choices">${[1, 2, 3, 4].map((n) => `<button class="choice" data-choice="${n}">${n}</button>`).join('')}</div>
     <div id="after"></div>`;
+  state.readyAt = performance.now() + TAP_GUARD_MS;
   document.getElementById('paper').onclick = (e) => e.currentTarget.classList.toggle('zoom');
   document.getElementById('quit').onclick = showResult;
   app.querySelectorAll('.choice').forEach((el) => {
@@ -247,7 +263,7 @@ function renderQuiz() {
 }
 
 function answer(choice) {
-  if (state.answered) return;
+  if (state.answered || performance.now() < state.readyAt) return;
   state.answered = true;
   const q = state.queue[state.index];
   const scored = q.answer !== null;
@@ -321,6 +337,7 @@ function render() {
     inQuiz: state.inQuiz,
     hasResults: state.results.length > 0,
   });
+  if (page !== state.current) window.scrollTo(0, 0);
   state.current = page;
   if (page === 'lock') { renderLock(); return; }
   if (page !== 'quiz') state.inQuiz = false;
@@ -350,12 +367,12 @@ async function main() {
   loadRecords();
   try {
     const res = await fetch('data/meta.json', { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`data/meta.json: ${res.status}`);
+    if (!res.ok) throw new LoadError('data/meta.json', res.status);
     state.meta = await res.json();
     await restoreKey();
     render();
   } catch (e) {
-    renderError(e.message);
+    renderError(e);
   }
 }
 
