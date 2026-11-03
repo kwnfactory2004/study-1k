@@ -73,3 +73,8 @@ export function fieldStats(records) {
   }
   return stats;
 }
+
+// 復習モード用：いちばん最近の答えが不正解の問題ID（正解すると自然にリストから外れる）
+export function wrongIds(records) {
+  return Object.entries(records).filter(([, r]) => r?.last === false).map(([id]) => id).sort();
+}

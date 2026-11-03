@@ -1,10 +1,12 @@
 import { deriveKey, decryptBundle } from './crypto.js';
-import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, yearLabel } from './stats.js';
+import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, wrongIds, yearLabel } from './stats.js';
+import { MAX_BACKUP_BYTES, backupFileName, buildBackup, parseBackup } from './backup.js';
 import { resolvePage } from './route.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
 const RECORDS_KEY = 'study1k.v1';
 const FLAGS_KEY = 'study1k.flags.v1';
+const PREV_KEY = 'study1k.prev.v1'; // 読み込みで上書きする前の記録の控え
 const DB_NAME = 'study1k';
 const DB_STORE = 'keys';
 const TAP_GUARD_MS = 400; // 問題が切り替わった直後のタップは受け付けない
@@ -176,21 +178,110 @@ function statTile(field, stat) {
 
 function renderHome() {
   const stats = fieldStats(state.records);
+  const wrongCount = wrongIds(state.records).length;
   app.innerHTML = `${storageNotice()}
     <h1>Study 1K</h1>
     <p class="sub">分野を選ぶと、その分野の問題に進みます</p>
     <div class="bento">
       ${FIELDS.map((f) => statTile(f, stats[f])).join('')}
       <button class="card tile" id="all"><div class="label">全部の分野</div><div class="state">分野や年度を選んで解く</div></button>
+      <button class="card tile span-2" id="review"><div class="label">復習モード</div><div class="value">${wrongCount}<span class="unit">問</span></div><div class="state">${wrongCount ? '間違えた問題だけを解く（正解すると外れます）' : '間違えた問題はありません'}</div></button>
     </div>
+    <p class="error" id="reviewMsg" role="alert"></p>
     ${state.flags.length ? `<div class="card">
       <h2>要確認の印をつけた解説</h2>
       <ul class="wrong-list">${state.flags.map((id) => `<li>${esc(yearLabel(id.slice(0, 3)))} No.${Number(id.slice(4))}</li>`).join('')}</ul>
-    </div>` : ''}`;
+    </div>` : ''}
+    <div class="card">
+      <h2>学習記録のバックアップ</h2>
+      <p class="sub">間違いと成績だけをファイルに保存できます。問題・解説・パスワードは入りません。</p>
+      <div class="row">
+        <button class="secondary" id="export">書き出す</button>
+        <button class="secondary" id="import">読み込む</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="sub" id="backupMsg" role="status"></p>
+    </div>`;
   app.querySelectorAll('[data-field]').forEach((el) => {
     el.onclick = () => openSetup([el.dataset.field]);
   });
   document.getElementById('all').onclick = () => openSetup(FIELDS);
+  document.getElementById('review').onclick = startReview;
+  setupBackupButtons();
+}
+
+function setupBackupButtons() {
+  const msg = document.getElementById('backupMsg');
+  const file = document.getElementById('importFile');
+  document.getElementById('export').onclick = () => {
+    const json = JSON.stringify(buildBackup(state.records, state.flags), null, 2);
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = backupFileName();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    msg.textContent = `${a.download} を書き出しました`;
+  };
+  document.getElementById('import').onclick = () => file.click();
+  file.onchange = async () => {
+    const f = file.files[0];
+    file.value = '';
+    if (!f) return;
+    if (f.size > MAX_BACKUP_BYTES) { msg.textContent = 'ファイルが大きすぎます（1MBまで）'; return; }
+    const result = parseBackup(await f.text());
+    if (result.error) { msg.textContent = result.error; return; }
+    const n = Object.keys(result.records).length;
+    if (!window.confirm(`${n}問ぶんの記録を読み込みます。今の記録は置き換わります（直前の記録は控えとして1つ残します）。よろしいですか？`)) {
+      msg.textContent = '読み込みをやめました';
+      return;
+    }
+    try {
+      localStorage.setItem(PREV_KEY, JSON.stringify({ records: state.records, flags: state.flags }));
+    } catch { /* 控えが残せなくても続ける */ }
+    state.records = result.records;
+    state.flags = result.flags;
+    saveRecords();
+    saveFlags();
+    renderHome();
+    document.getElementById('backupMsg').textContent = `${n}問ぶんの記録を読み込みました`;
+  };
+}
+
+// 復習モード：直近の答えが不正解の問題だけを、年度をまたいでランダムに出す
+async function startReview() {
+  if (state.loading) return;
+  const msg = document.getElementById('reviewMsg');
+  const ids = wrongIds(state.records);
+  if (ids.length === 0) {
+    msg.textContent = '間違えた問題はまだありません。問題を解くと、ここに集まります';
+    return;
+  }
+  const years = [...new Set(ids.map((id) => id.slice(0, 3)))].filter((y) => state.meta.years.includes(y));
+  state.loading = true;
+  msg.textContent = '読み込み中…';
+  try {
+    await loadYears(years);
+    if (state.current !== 'home') { state.loading = false; return; }
+    const all = years.flatMap((y) => state.bundles[y]);
+    state.queue = buildQueue(all, { fields: FIELDS, years, order: 'random', wrongOnly: true }, state.records, Math.random);
+    state.loading = false;
+    if (state.queue.length === 0) {
+      msg.textContent = '復習できる問題が見つかりませんでした';
+      return;
+    }
+    state.index = 0;
+    state.results = [];
+    state.answered = false;
+    state.inQuiz = true;
+    location.hash = '#quiz';
+    render();
+  } catch (e) {
+    state.loading = false;
+    await handleLoadError(e);
+  }
 }
 
 function openSetup(fields) {
@@ -278,22 +369,26 @@ async function startQuiz(setup) {
     render();
   } catch (e) {
     state.loading = false;
-    if (isStaleKey(e)) {
-      await forgetKey().catch(() => {});
-      state.key = null;
-      state.bundles = {};
-      state.current = 'lock';
-      try {
-        await loadMeta(); // 新しいデータの鍵づくりの設定に入れ替える
-      } catch (err) {
-        renderError(err);
-        return;
-      }
-      renderLock('データが更新されました。パスワードをもう一度入れてください。');
+    await handleLoadError(e);
+  }
+}
+
+async function handleLoadError(e) {
+  if (isStaleKey(e)) {
+    await forgetKey().catch(() => {});
+    state.key = null;
+    state.bundles = {};
+    state.current = 'lock';
+    try {
+      await loadMeta(); // 新しいデータの鍵づくりの設定に入れ替える
+    } catch (err) {
+      renderError(err);
       return;
     }
-    renderError(e);
+    renderLock('データが更新されました。パスワードをもう一度入れてください。');
+    return;
   }
+  renderError(e);
 }
 
 function renderQuiz() {
