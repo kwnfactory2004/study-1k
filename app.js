@@ -1,5 +1,5 @@
 import { deriveKey, decryptBundle } from './crypto.js';
-import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, wrongIds, yearLabel } from './stats.js';
+import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, wrongIds, yearLabel, yearLabelWithExam } from './stats.js';
 import { MAX_BACKUP_BYTES, backupFileName, buildBackup, parseBackup } from './backup.js';
 import { resolvePage } from './route.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
@@ -299,7 +299,7 @@ function renderSetup(message = '') {
   app.innerHTML = `<form class="card" id="setup">
     <h1>出題の設定</h1>
     <fieldset><legend>分野</legend><div class="chips">${chips('fields', 'checkbox', FIELDS, (f) => s.fields.includes(f))}</div></fieldset>
-    <fieldset><legend>年度</legend><div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabel)}</div>
+    <fieldset><legend>年度</legend><div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabelWithExam)}</div>
       <button class="secondary" type="button" id="allYears">すべて選ぶ</button></fieldset>
     <fieldset><legend>順番</legend><div class="chips">${chips('order', 'radio', ['year', 'random'], (o) => s.order === o, (o) => (o === 'year' ? '年度順' : 'ランダム'))}</div></fieldset>
     <fieldset><legend>絞り込み</legend><div class="chips">${chips('wrongOnly', 'checkbox', ['yes'], () => s.wrongOnly, () => '間違えた問題だけ')}</div></fieldset>
@@ -394,7 +394,7 @@ async function handleLoadError(e) {
 function renderQuiz() {
   const q = state.queue[state.index];
   app.innerHTML = `<div class="qhead">
-      <span class="sub">${state.index + 1} / ${state.queue.length}・${esc(q.field)}・${esc(yearLabel(q.year))} No.${q.no}</span>
+      <span class="sub">${state.index + 1} / ${state.queue.length}・${esc(q.field)}・${esc(yearLabelWithExam(q.year))} No.${q.no}</span>
       <button class="secondary" id="quit">終わる</button>
     </div>
     ${storageNotice()}

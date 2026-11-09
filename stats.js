@@ -8,6 +8,12 @@ export function yearLabel(year) {
   return `${ERAS[year[0]]}${n === 1 ? '元' : n}年度`;
 }
 
+// 試験は年度の次の年の3月に行われる（例: 令和元年度 → 令和2年3月）。H30年度の3月は平成31年
+export function examLabel(year) {
+  return `${ERAS[year[0]]}${Number(year.slice(1)) + 1}年3月実施`;
+}
+export const yearLabelWithExam = (year) => `${yearLabel(year)}（${examLabel(year)}）`;
+
 export const isOldYear = (year) => year.localeCompare(NEWEST_OLD_YEAR) <= 0;
 
 export function fieldOf(no) {
