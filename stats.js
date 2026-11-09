@@ -12,7 +12,8 @@ export function yearLabel(year) {
 export function examLabel(year) {
   return `${ERAS[year[0]]}${Number(year.slice(1)) + 1}年3月実施`;
 }
-export const yearLabelWithExam = (year) => `${yearLabel(year)}（${examLabel(year)}）`;
+// 表示は実施日だけ（例: 平成24年3月実施）。年度名は出さない
+export const yearLabelWithExam = (year) => examLabel(year);
 
 export const isOldYear = (year) => year.localeCompare(NEWEST_OLD_YEAR) <= 0;
 
