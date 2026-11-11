@@ -2,6 +2,7 @@ import { deriveKey, decryptBundle } from './crypto.js';
 import { FIELDS, buildQueue, fieldStats, isOldYear, questionId, recordAnswer, setupError, toggleFlag, wrongIds, yearLabel, yearLabelWithExam } from './stats.js';
 import { MAX_BACKUP_BYTES, backupFileName, buildBackup, parseBackup } from './backup.js';
 import { resolvePage } from './route.js';
+import { dotText } from './dotfont.js';
 import { LoadError, errorMessage, isStaleKey } from './messages.js';
 
 const RECORDS_KEY = 'study1k.v1';
@@ -31,6 +32,14 @@ const state = {
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+// 深緑の帯。pill は右上の丸い印（HTML）。subText はドット文字の小さい行
+function hero(subText, pill = '') {
+  return `<header class="hero">
+    <div><span class="t">${dotText('STUDY 1K', 28)}</span><span class="s">${dotText(subText, 10)}</span></div>
+    ${pill}
+  </header>`;
+}
 
 function loadRecords() {
   try {
@@ -119,7 +128,7 @@ async function loadYears(years) {
 }
 
 function renderError(error) {
-  app.innerHTML = `<div class="card narrow">
+  app.innerHTML = `${hero('ERROR')}<div class="card narrow">
     <h1>読み込めませんでした</h1>
     <p>${esc(errorMessage(error))}</p>
     <button class="primary full" id="reload">再読み込み</button>
@@ -132,7 +141,7 @@ function storageNotice() {
 }
 
 function renderLock(message = '') {
-  app.innerHTML = `<form class="card narrow" id="lock">
+  app.innerHTML = `${hero('LOCKED')}<form class="card narrow" id="lock">
     <h1>Study 1K</h1>
     <p class="sub">パスワードを入れてください</p>
     <input type="password" id="pw" autocomplete="current-password" aria-label="パスワード" required>
@@ -165,13 +174,14 @@ function renderLock(message = '') {
 }
 
 function statTile(field, stat) {
-  const value = stat.rate === null ? '—' : Math.round(stat.rate * 100);
-  const unit = stat.rate === null ? '' : '<span class="unit">%</span>';
+  const pct = stat.rate === null ? null : Math.round(stat.rate * 100);
+  const num = pct === null ? dotText('-', 32, 'まだ記録なし') : dotText(`${pct}%`, 32, `正答率 ${pct}パーセント`);
   const note = stat.rate === null ? 'まだ解いていません'
     : stat.belowCutoff ? `足切りの40%を下回っています（${stat.attempts}回）` : `${stat.attempts}回解答`;
   return `<button class="card tile ${stat.belowCutoff ? 'warn' : ''}" data-field="${esc(field)}">
     <div class="label">${esc(field)}</div>
-    <div class="value">${value}${unit}</div>
+    <div class="num">${num}</div>
+    <progress class="bar" max="100" value="${pct ?? 0}" aria-hidden="true"></progress>
     <div class="state">${esc(note)}</div>
   </button>`;
 }
@@ -179,13 +189,15 @@ function statTile(field, stat) {
 function renderHome() {
   const stats = fieldStats(state.records);
   const wrongCount = wrongIds(state.records).length;
-  app.innerHTML = `${storageNotice()}
-    <h1>Study 1K</h1>
+  const solved = Object.keys(state.records).length;
+  const total = state.meta.years.length * 50;
+  const pill = `<span class="pill">${dotText(`${solved}/${total}`, 12, `解いた問題 ${solved} / ${total}`)}<span class="pill-jp">解いた</span></span>`;
+  app.innerHTML = `${hero('PAST EXAMS', pill)}${storageNotice()}
     <p class="sub">分野を選ぶと、その分野の問題に進みます</p>
     <div class="bento">
+      <button class="card tile" id="all"><div class="label">全部の分野</div><div class="num">${dotText('ALL >', 32, 'すべて')}</div><div class="state">分野や年度を選んで解く</div></button>
       ${FIELDS.map((f) => statTile(f, stats[f])).join('')}
-      <button class="card tile" id="all"><div class="label">全部の分野</div><div class="state">分野や年度を選んで解く</div></button>
-      <button class="card tile span-2" id="review"><div class="label">復習モード</div><div class="value">${wrongCount}<span class="unit">問</span></div><div class="state">${wrongCount ? '間違えた問題だけを解く（正解すると外れます）' : '間違えた問題はありません'}</div></button>
+      <button class="card tile dark span-2" id="review"><div class="label">復習モード</div><div class="num">${dotText(`${wrongCount}`, 32, `${wrongCount}問`)}</div><div class="state">${wrongCount ? '間違えた問題だけを解く（正解すると外れます）' : '間違えた問題はありません'}</div></button>
     </div>
     <p class="error" id="reviewMsg" role="alert"></p>
     ${state.flags.length ? `<div class="card">
@@ -296,31 +308,56 @@ function chips(name, type, items, isChecked, label = (x) => x) {
 
 function renderSetup(message = '') {
   const s = state.setup;
-  app.innerHTML = `<form class="card" id="setup">
+  app.innerHTML = `${hero('SETUP')}<form class="card" id="setup">
     <h1>出題の設定</h1>
-    <fieldset><legend>分野</legend><div class="chips">${chips('fields', 'checkbox', FIELDS, (f) => s.fields.includes(f))}</div></fieldset>
-    <fieldset><legend>年度</legend><div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabelWithExam)}</div>
-      <button class="secondary" type="button" id="allYears">すべて選ぶ</button></fieldset>
-    <fieldset><legend>順番</legend><div class="chips">${chips('order', 'radio', ['year', 'random'], (o) => s.order === o, (o) => (o === 'year' ? '年度順' : 'ランダム'))}</div></fieldset>
-    <fieldset><legend>絞り込み</legend><div class="chips">${chips('wrongOnly', 'checkbox', ['yes'], () => s.wrongOnly, () => '間違えた問題だけ')}</div></fieldset>
+    <p class="sub">上から順に選んで、いちばん下の「始める」を押します。</p>
+    <fieldset><legend>${dotText('01', 12, '1')}分野</legend><div class="chips">${chips('fields', 'checkbox', FIELDS, (f) => s.fields.includes(f))}</div></fieldset>
+    <fieldset><legend>${dotText('02', 12, '2')}年度</legend>
+      <div class="quick">
+        <button class="secondary" type="button" id="recent">最近5年</button>
+        <button class="secondary" type="button" id="allYears">すべて選ぶ</button>
+      </div>
+      <div class="chips">${chips('years', 'checkbox', state.meta.years, (y) => s.years.includes(y), yearLabelWithExam)}</div></fieldset>
+    <fieldset><legend>${dotText('03', 12, '3')}順番</legend><div class="chips">${chips('order', 'radio', ['year', 'random'], (o) => s.order === o, (o) => (o === 'year' ? '年度順' : 'ランダム'))}</div></fieldset>
+    <fieldset><legend>${dotText('04', 12, '4')}絞り込み（なくてもOK）</legend><div class="chips">${chips('wrongOnly', 'checkbox', ['yes'], () => s.wrongOnly, () => '間違えた問題だけ')}</div></fieldset>
     <p class="error" id="msg" role="alert">${esc(message)}</p>
-    <div class="row">
-      <button class="primary" id="start">始める</button>
-      <button class="secondary" type="button" id="back">戻る</button>
+    <div class="actions">
+      <p class="summary" id="summary" role="status"></p>
+      <div class="row">
+        <button class="primary" id="start">始める</button>
+        <button class="secondary" type="button" id="back">戻る</button>
+      </div>
     </div>
   </form>`;
   document.getElementById('back').onclick = () => { location.hash = '#home'; render(); };
   const yearBoxes = [...app.querySelectorAll('input[name="years"]')];
   const allYears = document.getElementById('allYears');
+  const summary = document.getElementById('summary');
+  const form = document.getElementById('setup');
+  const updateSummary = () => {
+    const fd = new FormData(form);
+    const nf = fd.getAll('fields').length;
+    const ny = fd.getAll('years').length;
+    const fieldText = nf === FIELDS.length ? '全分野' : nf === 0 ? '分野が未選択' : fd.getAll('fields').join('・');
+    const yearText = ny === 0 ? '年度が未選択' : `${ny}年度`;
+    const orderText = fd.get('order') === 'random' ? 'ランダム' : '年度順';
+    summary.textContent = `${fieldText} ／ ${yearText} ／ ${orderText}${fd.has('wrongOnly') ? ' ／ 間違いだけ' : ''}`;
+  };
   const updateAllYears = () => {
     allYears.textContent = yearBoxes.every((b) => b.checked) ? 'すべて外す' : 'すべて選ぶ';
+    updateSummary();
   };
   allYears.onclick = () => {
     const on = !yearBoxes.every((b) => b.checked);
     yearBoxes.forEach((b) => { b.checked = on; });
     updateAllYears();
   };
-  yearBoxes.forEach((b) => { b.onchange = updateAllYears; });
+  document.getElementById('recent').onclick = () => {
+    const recent = yearBoxes.slice(-5);
+    yearBoxes.forEach((b) => { b.checked = recent.includes(b); });
+    updateAllYears();
+  };
+  form.onchange = updateAllYears;
   updateAllYears();
   document.getElementById('setup').onsubmit = (event) => {
     event.preventDefault();
@@ -393,15 +430,21 @@ async function handleLoadError(e) {
 
 function renderQuiz() {
   const q = state.queue[state.index];
-  app.innerHTML = `<div class="qhead">
-      <span class="sub">${state.index + 1} / ${state.queue.length}・${esc(q.field)}・${esc(yearLabelWithExam(q.year))} No.${q.no}</span>
-      <button class="secondary" id="quit">終わる</button>
+  const n = state.index + 1;
+  const total = state.queue.length;
+  app.innerHTML = `<div class="qbar">
+      <div class="qhead">
+        <span class="qcount">${dotText(`${n}/${total}`, 24, `${total}問中 ${n}問目`)}</span>
+        <button class="secondary" id="quit">終わる</button>
+      </div>
+      <progress class="bar" max="${total}" value="${n}" aria-hidden="true"></progress>
     </div>
+    <p class="qmeta">${esc(q.field)}・${esc(yearLabelWithExam(q.year))} No.${q.no}</p>
     ${storageNotice()}
     ${isOldYear(q.year) ? '<p class="notice">古い年度の問題です。法改正や技術の変化で、今の正解と違う場合があります。</p>' : ''}
     <div class="paper" id="paper"><img alt="${esc(yearLabel(q.year))} No.${q.no} の問題" src="data:image/webp;base64,${q.image}"></div>
     <p class="sub">画像をタップすると拡大します</p>
-    <div class="choices">${[1, 2, 3, 4].map((n) => `<button class="choice" data-choice="${n}">${n}</button>`).join('')}</div>
+    <div class="choices">${[1, 2, 3, 4].map((n) => `<button class="choice" data-choice="${n}" aria-label="選択肢 ${n}">${dotText(`${n}`, 28, `${n}`)}</button>`).join('')}</div>
     <div id="after"></div>`;
   state.readyAt = performance.now() + TAP_GUARD_MS;
   document.getElementById('paper').onclick = (e) => e.currentTarget.classList.toggle('zoom');
@@ -429,7 +472,8 @@ function answer(choice) {
   const text = !scored ? 'この問題は公式で全員正解になったため、採点しません'
     : correct ? '正解' : `不正解（正解は ${q.answer}）`;
   const last = state.index + 1 >= state.queue.length;
-  document.getElementById('after').innerHTML = `<p class="feedback ${correct ? '' : 'ng'}" role="status">${esc(text)}</p>
+  const mark = !scored ? '' : correct ? dotText('OK', 24, '') : dotText('NG', 24, '');
+  document.getElementById('after').innerHTML = `<p class="feedback ${correct ? '' : 'ng'}" role="status">${mark}<span>${esc(text)}</span></p>
     ${explanationHtml(q)}
     <button class="primary full" id="next">${last ? '結果を見る' : '次へ'}</button>`;
   const flag = document.getElementById('flag');
@@ -462,9 +506,10 @@ function renderResult() {
   const correct = scored.filter((r) => r.correct).length;
   const wrong = scored.filter((r) => !r.correct);
   const rate = scored.length ? Math.round((correct / scored.length) * 100) : null;
-  app.innerHTML = `<div class="bento">
-      <div class="card tile span-2"><div class="label">正答率</div><div class="value">${rate ?? '—'}<span class="unit">${rate === null ? '' : '%'}</span></div></div>
-      <div class="card tile span-2"><div class="label">正解数</div><div class="value">${correct}<span class="unit"> / ${scored.length}問</span></div></div>
+  const rateNum = rate === null ? dotText('-', 40, '採点なし') : dotText(`${rate}%`, 40, `正答率 ${rate}パーセント`);
+  app.innerHTML = `${hero('RESULT')}<div class="bento">
+      <div class="card tile dark span-2"><div class="label">正答率</div><div class="num">${rateNum}</div></div>
+      <div class="card tile span-2"><div class="label">正解数</div><div class="num">${dotText(`${correct}/${scored.length}`, 40, `${scored.length}問中 ${correct}問正解`)}</div></div>
     </div>
     <div class="card">
       <h2>間違えた問題</h2>
