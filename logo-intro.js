@@ -3,9 +3,9 @@
 // excel-intro.js の最初に呼ばれる（Excel演出のAIカーソルは、着地のあとに動き始める）。
 import SPR from './logo-sprites.js';
 
-const SC_T = 0.72;            // 動きを縮める倍率（単体版の約4.4秒 → 約2.3秒）
-const PLAY_END = 2.3;         // ロゴが完成するまで（秒）
-const FLY_START = 2.4, FLY_END = 3.15;  // ヘッダーへ飛ぶ時間
+const SC_T = 0.55;            // 動きを縮める倍率（単体版の約4.4秒 → 約1.7秒）
+const PLAY_END = 1.6;         // ロゴが完成するまで（秒）
+const FLY_START = 1.65, FLY_END = 2.3;  // ヘッダーへ飛ぶ時間
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const prog = (t, a, b) => clamp((t - a) / (b - a));
 const outCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -139,6 +139,6 @@ export async function playLogoIntro({ target, isSkipped = () => false }) {
 
   // 着地: 本物のヘッダーのロゴを出して、飛んできたロゴと入れ替える
   try { target.classList.add('bp-in'); } catch (e) { /* 次へ */ }
-  if (!aborted) await new Promise((r) => setTimeout(r, 420));
+  if (!aborted) await new Promise((r) => setTimeout(r, 250));
   cv.remove();
 }
