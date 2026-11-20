@@ -1,17 +1,12 @@
 // KWNロゴ演出（ページを開いたとき）。ポータルと同じ logo-intro.js を使い、白い画面の上でロゴを組み上げてから、左上へ飛ばして消す。
 // 動きを減らす設定のときは流さない。クリック・Enter・Escape でスキップできる。
-// index.html の <style id="logo-cover"> が、ロゴの絵が出るまでページを白で隠している（ページが一瞬見えないように）。
+// style.css の html::before が、ロゴの絵が出るまでページを白で隠している（ページが一瞬見えないように）。
 import { playLogoIntro } from './logo-intro.js';
 
 (function () {
-  const cover = document.getElementById('logo-cover');
-  const uncover = () => { if (cover) cover.remove(); };
+  // 白い覆いと #logo-intro の見た目は style.css にある（CSPで直書きの style が止まるため）
+  const uncover = () => document.documentElement.classList.add('logo-uncovered');
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { uncover(); return; }
-
-  // 演出の全画面キャンバス（logo-intro.js が作る #logo-intro）の見た目
-  const style = document.createElement('style');
-  style.textContent = '#logo-intro { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 9500; cursor: pointer; }';
-  document.head.appendChild(style);
 
   // 飛んでいく先。各ページのロゴの場所に合わせるため、左上に見えない箱を置く
   const target = document.createElement('div');

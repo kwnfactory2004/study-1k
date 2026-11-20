@@ -139,3 +139,9 @@ legend { font-weight: 600; margin-bottom: 8px; padding: 0; display: flex; align-
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* KWNロゴ演出（logo-arrival.js）。CSPで直書きの style が止まるため、ここに置く */
+html:not(.logo-uncovered)::before { content: ""; position: fixed; inset: 0; background: #fff; z-index: 9400; animation: logo-cover-off 0s linear 4s forwards; }
+@keyframes logo-cover-off { to { visibility: hidden; } }
+#logo-intro { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 9500; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { html::before { display: none; } }
